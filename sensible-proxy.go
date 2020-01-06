@@ -39,6 +39,7 @@ func main() {
 		httpPort   = "80"
 		httpsPort  = "443"
 		appLogPath = "/var/log/sensible-proxy.log"
+		inet6      = false
 	)
 
 	// Get configuration from ENV
@@ -53,6 +54,9 @@ func main() {
 	}
 	if os.Getenv("DEBUG") != "" {
 		debugLog = true
+	}
+	if os.Getenv("INET6") != "" {
+		inet6 = true
 	}
 
 	logFile, err := os.OpenFile(appLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -72,8 +76,8 @@ func main() {
 		port:   httpsPort,
 		logger: appLog,
 	}
-	go doProxy(errChan, handleHTTPConnection, proxy)
-	go doProxy(errChan, handleHTTPSConnection, tlsProxy)
+	go doProxy(errChan, inet6, handleHTTPConnection, proxy)
+	go doProxy(errChan, inet6, handleHTTPSConnection, tlsProxy)
 
 	// setup capturing of signals
 	sigChan := make(chan os.Signal, 1)
@@ -127,13 +131,16 @@ func setWhitelistFromURL(proxy, tlsProxy *ConnectionProxy, url string) {
 	tlsProxy.SetWhiteList(whiteList)
 }
 
-func doProxy(errChan chan int, handle tcpHandler, proxy *ConnectionProxy) {
+func doProxy(errChan chan int, inet6 bool, handle tcpHandler, proxy *ConnectionProxy) {
 	// the proxy should never quit (leaving this function)
 	defer func(crash chan int) {
 		crash <- 1
 	}(errChan)
-
-	listener, err := net.Listen("tcp", "0.0.0.0:"+proxy.port)
+	ipAddr := "0.0.0.0:"
+	if inet6 {
+		ipAddr = "[::]:"
+	}
+	listener, err := net.Listen("tcp", ipAddr+proxy.port)
 	if err != nil {
 		log.Printf("Couldn't start listening: %s", err)
 		return
